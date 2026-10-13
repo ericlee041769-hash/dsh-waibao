@@ -1,0 +1,19 @@
+{
+  "name": "dsh-waibao",
+  "version": "0.1.0",
+  "description": "把 Codex 委派放进 DSH 桌面：可见会话、连续上下文、完成回调。",
+  "type": "module",
+  "main": "src/host.mjs",
+  "exports": { ".": "./src/host.mjs", "./package.json": "./package.json", "./cordis.patch.yml": "./cordis.patch.yml" },
+  "bin": { "dsh-waibao": "bin/cli.mjs", "dsh-waibao-job": "bin/job.mjs", "dsh-waibao-skill": "bin/install-skill.mjs" },
+  "files": ["src", "bin", "skills", "docs", "promo/render.py", "promo/README.md", "promo/requirements.txt", "promo/assets", "cordis.patch.yml", "README.md", "LICENSE", "CHANGELOG.md"],
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } },
+  "engines": { "node": ">=24" },
+  "os": ["win32"],
+  "keywords": ["dsh-plugin", "deepseek-harness", "codex", "delegation", "desktop"],
+  "license": "MIT",
+  "repository": { "type": "git", "url": "git+https://github.com/ericlee041769-hash/dsh-waibao.git" },
+  "homepage": "https://github.com/ericlee041769-hash/dsh-waibao#readme",
+  "bugs": { "url": "https://github.com/ericlee041769-hash/dsh-waibao/issues" },
+  "scripts": { "test": "node --test", "check": "node --check src/host.mjs && node --check bin/cli.mjs && node --check bin/job.mjs && node --check bin/install-skill.mjs" }
+}
