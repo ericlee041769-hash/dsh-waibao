@@ -33,12 +33,12 @@ test('authenticated desktop requests preserve identity, admission and cleanup', 
       async create({sessionId}) {
         if (agents.has(sessionId)) return;
         const history = [];
-        agents.set(sessionId, {history, status: 'idle', inbox: {nextTurn: [], nextStep: []}, session: {header: {cwd: root}, snapshotEvents: () => history}, whenIdle: async () => {}});
+        agents.set(sessionId, {history, status: 'idle', ctx: {inject(deps, fn) {fn({tools: {register() {}}}); return {dispose: async () => {}};}}, inbox: {nextTurn: [], nextStep: []}, session: {id: sessionId, header: {cwd: root}, snapshotEvents: () => history}, whenIdle: async () => {}});
       },
       resolveAgent: async id => ({agent: agents.get(id)}),
       list: async () => ({items: [...agents.keys()].map(sessionId => ({sessionId}))}),
       rename: async () => {},
-      agents: {selectionFor: () => ({current: selection}), selectForNextRequest: () => {selectionWrites++;}},
+      agents: {selectionFor: agent => ({current: agent.selection ?? selection}), selectForNextRequest: (agent, value) => {selectionWrites++; agent.selection = value;}},
       async prompt(request, signal) {
         assert(signal instanceof AbortSignal);
         promptCount++;
@@ -69,20 +69,23 @@ test('authenticated desktop requests preserve identity, admission and cleanup', 
   const invalid = await request({action: 'describe', token: 'wrong'});
   assert.match(invalid[0].message, /Unauthenticated/);
   assert.equal(promptCount, 0);
+  const description = (await request({action: 'describe'}))[0];
+  assert.equal(description.version, '0.1.3');
+  assert.equal(description.capabilities.parentMessages, true);
   const base = {action: 'run', workspace: root, requestId: 'round-1', prompt: 'remember'};
   const first = await request(base);
+  assert(first.some(event => event.type === 'session'), JSON.stringify(first));
   const session = first.find(event => event.type === 'session');
   assert(session.sessionId); assert.deepEqual(session.selection, selection);
   assert.equal(first.find(event => event.type === 'final').text, 'turn-1');
   assert.equal(first.at(-1).exitCode, 0);
-  const second = await request({...base, sessionId: session.sessionId, requestId: 'round-2', expectedSelection: selection});
+  const second = await request({...base, sessionId: session.sessionId, requestId: 'round-2'});
   assert.equal(second.find(event => event.type === 'final').text, 'turn-2');
   assert.equal(agents.size, 1); assert.equal(selectionWrites, 0); assert.equal(promptCount, 2);
   for (const body of [
     {...base, sessionId: session.sessionId},
     {...base, sessionId: 'unknown'},
-    {...base, sessionId: session.sessionId, workspace: os.tmpdir()},
-    {...base, sessionId: session.sessionId, requestId: 'round-3', expectedSelection: {...selection, model: 'other'}}
+    {...base, sessionId: session.sessionId, workspace: os.tmpdir()}
   ]) { assert.equal((await request(body)).at(-1).exitCode, 1); }
   agents.get(session.sessionId).status = 'running';
   assert.match((await request({...base, sessionId: session.sessionId, requestId: 'round-3'}))[0].message, /busy/);
@@ -94,15 +97,51 @@ test('authenticated desktop requests preserve identity, admission and cleanup', 
   const binding = path.join(root, 'binding.json');
   await fs.writeFile(path.join(root, 'prompt.txt'), 'continue');
   await fs.writeFile(spec, JSON.stringify({workspace: root, bindingPath: binding, promptFile: path.join(root, 'prompt.txt'), sessionId: session.sessionId, requestId: 'round-3'}));
-  const child = spawn(process.execPath, ['bin/cli.mjs', 'run', spec], {cwd: new URL('..', import.meta.url), windowsHide: true, env: process.env});
-  let stdout = ''; let stderr = '';
-  child.stdout.on('data', c => {stdout += c;}); child.stderr.on('data', c => {stderr += c;});
-  const exit = await new Promise((resolve, reject) => {child.on('error', reject); child.on('close', resolve);});
-  assert.equal(exit, 0, stderr); assert(stdout.includes('turn-3'));
+  async function cli(action) {
+    const child = spawn(process.execPath, ['bin/cli.mjs', action, spec], {cwd: new URL('..', import.meta.url), windowsHide: true, env: process.env});
+    let stdout = ''; let stderr = '';
+    child.stdout.on('data', c => {stdout += c;}); child.stderr.on('data', c => {stderr += c;});
+    const exit = await new Promise((resolve, reject) => {child.on('error', reject); child.on('close', resolve);});
+    assert.equal(exit, 0, stderr);
+    return stdout;
+  }
+  assert((await cli('run')).includes('turn-3'));
   assert.equal(JSON.parse(await fs.readFile(binding)).sessionId, session.sessionId);
   assert.equal(promptCount, 3); assert.equal(agents.size, 1); assert(flushCount >= 6);
+  const agent = agents.get(session.sessionId);
+  const desktopSelection = {provider: 'my-private-provider', model: 'newly-added-model', reasoningEffort: 'max'};
+  agent.selection = desktopSelection;
+  await fs.writeFile(spec, JSON.stringify({workspace: root, bindingPath: binding, promptFile: path.join(root, 'prompt.txt'), requestId: 'round-4'}));
+  assert((await cli('run')).includes('turn-4'));
+  assert.deepEqual(JSON.parse(await fs.readFile(binding)).selection, desktopSelection);
+  assert.equal(selectionWrites, 0);
+  const explicitSelection = {provider: 'another-user-provider', model: 'custom-model-2026'};
+  const changed = await request({...base, sessionId: session.sessionId, requestId: 'round-5', selection: explicitSelection});
+  assert.equal(changed.find(event => event.type === 'final').text, 'turn-5');
+  assert.deepEqual(changed.find(event => event.type === 'session').selection, explicitSelection);
+  assert.deepEqual(agent.selection, explicitSelection);
+  assert.equal(selectionWrites, 1);
+  assert.equal(promptCount, 5);
+  assert.equal(agents.size, 1);
   await cleanup(); cleanup = async () => {};
   await assert.rejects(fs.access(connectionFile), {code: 'ENOENT'});
   assert.equal(events.listenerCount('session/event'), 0);
   assert.equal(events.listenerCount('agent/error'), 0);
+
+  const pipe = `\\\\.\\pipe\\waibao-disconnect-${process.pid}-${Date.now()}`;
+  const brokenHost = net.createServer(socket => socket.once('data', () => socket.end(JSON.stringify({type: 'session', sessionId: session.sessionId, cwd: root, selection}) + '\n')));
+  await new Promise((resolve, reject) => {brokenHost.once('error', reject); brokenHost.listen(pipe, resolve);});
+  try {
+    await fs.mkdir(path.dirname(connectionFile), {recursive: true});
+    await fs.writeFile(connectionFile, JSON.stringify({pipe, token: 'test-disconnect'}));
+    const child = spawn(process.execPath, ['bin/cli.mjs', 'run', spec], {cwd: new URL('..', import.meta.url), windowsHide: true, env: process.env});
+    let output = '';
+    child.stdout.on('data', chunk => {output += chunk;});
+    child.stderr.on('data', chunk => {output += chunk;});
+    const exit = await new Promise((resolve, reject) => {child.on('error', reject); child.on('close', resolve);});
+    assert.equal(exit, 1);
+    assert.match(output, /connection ended before completion/i);
+  } finally {
+    await new Promise(resolve => brokenHost.close(resolve));
+  }
 });

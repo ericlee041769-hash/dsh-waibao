@@ -1,7 +1,7 @@
 {
   "name": "dsh-waibao",
-  "version": "0.1.0",
-  "description": "把 Codex 委派放进 DSH 桌面：可见会话、连续上下文、完成回调。",
+  "version": "0.1.3",
+  "description": "Codex 与 DSH 桌面并行子任务、执行中交流、自由模型和连续上下文。",
   "type": "module",
   "main": "src/host.mjs",
   "exports": { ".": "./src/host.mjs", "./package.json": "./package.json", "./cordis.patch.yml": "./cordis.patch.yml" },
@@ -15,5 +15,5 @@
   "repository": { "type": "git", "url": "git+https://github.com/ericlee041769-hash/dsh-waibao.git" },
   "homepage": "https://github.com/ericlee041769-hash/dsh-waibao#readme",
   "bugs": { "url": "https://github.com/ericlee041769-hash/dsh-waibao/issues" },
-  "scripts": { "test": "node --test", "check": "node --check src/host.mjs && node --check bin/cli.mjs && node --check bin/job.mjs && node --check bin/install-skill.mjs" }
+  "scripts": { "test": "node --test", "check": "node --check src/host.mjs && node --check bin/cli.mjs && node --check bin/job.mjs && node --check bin/read-run.mjs && node --check bin/install-skill.mjs && node --check test/desktop.test.mjs && node --check test/submit.test.mjs && node --check test/approval.test.mjs && node --check test/interaction.test.mjs" }
 }

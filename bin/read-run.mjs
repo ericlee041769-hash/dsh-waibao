@@ -1,16 +1,57 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
+import { dataDir } from '../src/paths.mjs';
 
-const [source, ...extra] = process.argv.slice(2);
-if (!source || extra.length || !path.isAbsolute(source)) {
-  console.error('Usage: node read-run.mjs <absolute-headless-stdout.jsonl>');
+const [rawSource, ...extra] = process.argv.slice(2);
+const jobsDir = path.join(dataDir, 'jobs');
+const jobIdPattern = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,99}$/;
+if (!rawSource || extra.length) {
+  console.error('Usage: node read-run.mjs <job-id | absolute-headless-stdout.jsonl>');
   process.exit(1);
 }
 
 try {
+  let source = rawSource;
+  let job = null;
+  if (jobIdPattern.test(rawSource)) {
+    const record = path.join(jobsDir, `${rawSource}.json`);
+    try { job = JSON.parse(fs.readFileSync(record, 'utf8')); }
+    catch (error) { throw new Error(`Cannot read job record ${record}: ${error.message}`); }
+    if (typeof job.stdoutPath !== 'string' || !path.isAbsolute(job.stdoutPath)) throw new Error(`Job ${rawSource} has no absolute stdout path`);
+    source = job.stdoutPath;
+  } else if (!path.isAbsolute(rawSource)) {
+    throw new Error('Use a job ID or an absolute headless stdout path');
+  }
   const result = {
-    source, sessionId: null, cwd: null, turns: [], steps: 0,
+    source, job: job && {
+      id: job.id, status: job.status, runState: job.runState ?? null, exitCode: job.exitCode ?? null,
+      workspace: job.workspace, bindingPath: job.bindingPath ?? null, task: job.task ?? null,
+      stopRequestedAt: job.stopRequestedAt ?? null, discardedSteers: Array.isArray(job.discardedSteers) ? job.discardedSteers.slice(0, 50) : [],
+      stdoutPath: job.stdoutPath, stderrPath: job.stderrPath ?? null, exitPath: job.exitPath ?? null,
+      waiting: Array.isArray(job.waiting) ? job.waiting.slice(0, 20) : [],
+      approvals: Array.isArray(job.approvals) ? job.approvals.slice(0, 20).map(record => ({
+        approvalId: record.approvalId, sessionId: record.sessionId ?? null, requestId: record.requestId ?? null,
+        toolName: record.toolName ?? null, callId: record.callId ?? null, reason: record.reason ?? null,
+        createdAt: record.createdAt ?? null, notifiedAt: record.notifiedAt ?? null,
+        notificationError: record.notificationError ?? null, outcome: record.outcome ?? null, decidedAt: record.decidedAt ?? null,
+      })) : [],
+      questions: Array.isArray(job.questions) ? job.questions.slice(0, 20).map(record => ({
+        questionId: record.questionId, sessionId: record.sessionId ?? null, requestId: record.requestId ?? null,
+        callId: record.callId ?? null, timed: record.timed === true, questions: Array.isArray(record.questions) ? record.questions.slice(0, 20) : [],
+        createdAt: record.createdAt ?? null, notifiedAt: record.notifiedAt ?? null,
+        notificationError: record.notificationError ?? null, outcome: record.outcome ?? null, decidedAt: record.decidedAt ?? null,
+      })) : [],
+      parentMessageCount: Array.isArray(job.parentMessages) ? job.parentMessages.length : 0,
+      messageDeliveryErrors: Array.isArray(job.parentMessages) ? job.parentMessages.filter(record => record.notificationError).length : 0,
+      parentMessages: Array.isArray(job.parentMessages) ? job.parentMessages.slice(-20).map(record => ({
+        messageId: record.messageId, sessionId: record.sessionId ?? null, requestId: record.requestId ?? null,
+        message: String(record.message ?? '').slice(0, 2000), messageTruncated: String(record.message ?? '').length > 2000,
+        createdAt: record.createdAt ?? null, deliveryAttemptedAt: record.deliveryAttemptedAt ?? null,
+        notifiedAt: record.notifiedAt ?? null, notificationError: record.notificationError ?? null,
+      })) : [],
+    },
+    sessionId: null, cwd: null, turns: [], steps: 0,
     usageSteps: 0, cacheMeasuredSteps: 0, toolCalls: 0, toolErrors: 0,
     firstStepUsage: null, lastStepUsage: null, finalPresent: false,
     finalText: null, finalTruncated: false, errors: [],

@@ -8,14 +8,27 @@ import { connectionFile } from '../src/paths.mjs';
 const [action, specPath, ...extra] = process.argv.slice(2);
 try {
   if (!action || action === '--help') {
-    console.log('dsh-waibao describe | adopt <absolute-spec.json> | run <absolute-spec.json>');
+    console.log('dsh-waibao describe | adopt <absolute-spec.json> | run <absolute-spec.json> | pending <absolute-spec.json> | decide <absolute-spec.json>');
     process.exit(0);
   }
-  if (!['describe', 'adopt', 'run'].includes(action) || extra.length || (action !== 'describe' && (!specPath || !path.isAbsolute(specPath)))) throw new Error('Usage: dsh-waibao describe | adopt <spec.json> | run <spec.json>');
+  if (!['describe', 'adopt', 'run', 'pending', 'decide'].includes(action) || extra.length || (action !== 'describe' && (!specPath || !path.isAbsolute(specPath)))) throw new Error('Usage: dsh-waibao describe | adopt <spec.json> | run <spec.json> | pending <spec.json> | decide <spec.json>');
   const spec = action === 'describe' ? {} : JSON.parse(fs.readFileSync(specPath, 'utf8').replace(/^\uFEFF/, ''));
-  const request = {action, workspace: spec.workspace, workspaceTitle: spec.workspaceTitle, sessionId: spec.sessionId, title: spec.title, selection: spec.selection, requestId: spec.requestId};
+  const request = {action, workspace: spec.workspace, workspaceTitle: spec.workspaceTitle, sessionId: spec.sessionId, title: spec.title, selection: spec.selection, requestId: spec.requestId, callerThreadId: process.env.CODEX_THREAD_ID ?? null};
+  if (action === 'pending' || action === 'decide') {
+    if (!path.isAbsolute(spec.workspace ?? '')) throw new Error('Absolute workspace required');
+    if (spec.sessionId !== undefined && (typeof spec.sessionId !== 'string' || !spec.sessionId)) throw new Error('sessionId must be a non-empty string when provided');
+    if (spec.requestId !== undefined && (typeof spec.requestId !== 'string' || !spec.requestId)) throw new Error('requestId must be a non-empty string when provided');
+    if (action === 'decide') {
+      if (typeof spec.sessionId !== 'string' || !spec.sessionId) throw new Error('sessionId is required to decide an approval');
+      if (typeof spec.approvalId !== 'string' || !spec.approvalId) throw new Error('approvalId is required to decide an approval');
+      if (!['allowed-once', 'rejected'].includes(spec.outcome)) throw new Error('outcome must be "allowed-once" or "rejected"');
+      request.approvalId = spec.approvalId;
+      request.outcome = spec.outcome;
+    }
+  }
   if (action === 'run') {
-    if (!path.isAbsolute(spec.workspace ?? '') || !path.isAbsolute(spec.bindingPath ?? '') || !path.isAbsolute(spec.promptFile ?? '')) throw new Error('Absolute workspace, bindingPath and promptFile required');
+    if (!path.isAbsolute(spec.workspace ?? '') || !path.isAbsolute(spec.bindingPath ?? '')) throw new Error('Absolute workspace and bindingPath required');
+    if (!path.isAbsolute(spec.promptFile ?? '')) throw new Error('Absolute promptFile required');
     const relative = path.relative(spec.workspace, spec.bindingPath);
     if (!relative || relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)) throw new Error('bindingPath must be inside the task workspace');
     if (fs.existsSync(spec.bindingPath)) {
@@ -24,7 +37,6 @@ try {
       if (spec.sessionId && spec.sessionId !== binding.sessionId) throw new Error('Binding session mismatch');
       if (binding.transport !== 'desktop') throw new Error('Import the existing session into desktop before continuing');
       request.sessionId = binding.sessionId;
-      request.expectedSelection = binding.selection;
     }
     request.prompt = fs.readFileSync(spec.promptFile, 'utf8').replace(/^\uFEFF/, '');
   }
