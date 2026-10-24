@@ -280,72 +280,72 @@ def shot_parallel(im, d, p, lt, dur, P):
 
 # ----------------------------------------------------------------- shot 4
 def shot_report(im, d, p, lt, dur, P):
-    """Child reports upward: message leaves the lane and reaches the parent."""
+    """One message travels through a clear corridor from child to parent."""
     fg, dim = P["fg"], P["dim"]
-    landed = seg(p, 0.46, 0.78)
-    plate(d, (80, 150, 1000, 300), P["card"], 26,
-          LIME if landed >= 0.99 else P["line"], 3)
-    tx(d, (122, 180), "父线程", 44, fg, maxw=300)
-    tx(d, (122, 240), "send_to_parent · 实时投递" if landed >= 0.99 else "监听中", 27,
-       LIME if landed >= 0.99 else dim, "r")
-    chip(d, 958, 224, "子→父 %d" % (1 if landed >= 0.99 else 0), 30,
-         INK, LIME if landed >= 0.99 else P["card2"], align="right")
+    travel = eo(seg(p, 0.06, 0.80))
+    received = p >= 0.80
+    tx(d, (80, 186), "有发现，直接汇报", 82, fg, maxw=920)
 
-    plate(d, (80, 360, 1000, 1330), P["card"], 28, P["line"], 2)
-    avatar(d, 200, 462, 56, "A", LIME, P["card2"])
-    tx(d, (286, 424), "查资料", 46, fg, maxw=420)
-    tx(d, (286, 486), "执行中 · 遇到冲突", 28, dim, "r")
-    vbar(d, 122, 560, 190, 1280, cl(0.18 + p * 0.50), LIME, P["card2"], 12)
-    tx(d, (222, 566), "子代理不必等唤问", 26, dim, "r")
-    tx(d, (222, 604), "先开口", 26, LIME, "r")
+    # Receiver, transit corridor and sender occupy separate non-overlapping bands.
+    plate(d, (80, 360, 1000, 600), P["card"], 28,
+          LIME if received else P["line"], 3)
+    avatar(d, 174, 448, 48, "C", LIME, P["card2"])
+    tx(d, (260, 394), "Codex", 48, fg)
+    tx(d, (260, 474), "已收到子任务的发现" if received else "接收子任务的消息", 34, dim, "r")
+    chip(d, 958, 548, "已收到" if received else "接收中", 28, INK, LIME,
+         align="right", pad=(20, 10))
 
-    d.line((540, 660, 540, 812), fill=mix(P["line"], LIME, 0.55), width=3)
-    for k in range(7):
-        yy = 682 + k * 20
-        d.line((520, yy, 560, yy), fill=mix(P["card"], LIME, 0.4), width=3)
+    # Draw the route first; the single solid message card covers it as it travels.
+    for y in range(638, 1110, 30):
+        d.line((540, y, 540, y + 12), fill=P["line"], width=4)
+    d.polygon(((540, 620), (522, 646), (558, 646)), fill=LIME)
+    y = round(926 - 282 * travel)
+    plate(d, (140, y, 940, y + 180), P["card2"], 26, LIME, 3)
+    tx(d, (180, y + 28), "上下游接口对不上", 44, fg, maxw=720)
+    tx(d, (180, y + 102), "先汇报，其他工作继续", 34, LIME, "r", maxw=720)
 
-    rise = round(512 * eo(landed))
-    for gx in (0.26, 0.56, 0.82):
-        gy = rise * gx
-        plate(d, (300, 880 - gy, 960, 1052 - gy), mix(P["card2"], P["card"], 1 - gx), 24)
-    plate(d, (300, 880 - rise, 960, 1052 - rise), P["card2"], 24, LIME, 3)
-    tx(d, (338, 910 - rise), "这块和下游冲突了", 42, fg, maxw=600)
-    tx(d, (338, 972 - rise), "我先汇报，继续跑", 34, dim, "r")
-
-    if landed >= 0.99:
-        chip(d, 122, 1196, "已送达 · 不用等轮次结束", 30, INK, LIME)
-    else:
-        tx(d, (122, 1186), "消息正在上传…", 28, dim, "r")
+    plate(d, (80, 1150, 1000, 1430), P["card"], 28, P["line"], 2)
+    avatar(d, 174, 1236, 48, "A", LIME, P["card2"])
+    tx(d, (260, 1184), "DSH · 查资料", 48, fg)
+    tx(d, (260, 1264), "子任务继续执行", 34, fg, "r")
+    pulse = 0.6 + 0.4 * math.sin(lt * 6)
+    d.ellipse((124, 1364, 140, 1380), fill=mix(P["card2"], LIME, pulse))
+    tx(d, (158, 1352), "有发现就汇报，无需等到结束", 30, dim, "r")
     return im
 
 
 # ----------------------------------------------------------------- shot 5
 def shot_reply(im, d, p, lt, dur, P):
-    """The parent answers downward. Light layout, opposite direction."""
+    """A concrete direction returns to the same child while the others continue."""
     fg, dim = P["fg"], P["dim"]
-    got = seg(p, 0.42, 0.62)
-    plate(d, (80, 150, 1000, 640), P["card"], 28, fg, 3)
-    tx(d, (122, 182), "父任务 · append", 40, fg, maxw=520)
-    tx(d, (122, 262), "按新方案做，别停；", 58, fg, maxw=820)
-    tx(d, (122, 340), "剩下的我来收。", 58, fg, maxw=820)
-    chip(d, 122, 470, "方向更新", 30, P["bg"], ORANGE, pad=(24, 13))
-    tx(d, (958, 236), "job A", 32, dim, "m", anchor="ra")
+    travel = eo(seg(p, 0.12, 0.74))
+    received = p >= 0.74
+    tx(d, (80, 186), "收到，按这个方向做", 82, fg, maxw=920)
 
-    travel = eo(seg(p, 0.10, 0.44))
-    ay = 664 + round(120 * travel)
-    d.line((540, 664, 540, ay), fill=ORANGE, width=8)
-    d.polygon(((540, ay + 34), (508, ay - 6), (572, ay - 6)), fill=ORANGE)
-    tx(d, (588, 664), "同一 job 追加" if travel < 1 else "已投递", 28, dim, "r")
+    plate(d, (80, 360, 1000, 600), P["card"], 28, fg, 3)
+    avatar(d, 174, 448, 48, "C", INK, LIME)
+    tx(d, (260, 394), "Codex", 48, fg)
+    tx(d, (260, 474), "根据发现，调整下一步", 34, dim, "r")
+    chip(d, 958, 548, "已回复" if p > 0.18 else "正在回复", 28, INK, ORANGE,
+         align="right", pad=(20, 10))
 
-    plate(d, (80, 840, 1000, 1330), P["card"], 28, LIME if got > 0.9 else P["line"], 3)
-    avatar(d, 190, 940, 56, "A", LIME, P["card2"])
-    tx(d, (272, 906), "查资料", 46, fg, maxw=420)
-    tx(d, (272, 964), "已调整方向" if got > 0.5 else "等待指示", 28,
-       LIME if got > 0.5 else dim, "r")
-    hbar(d, 122, 1060, 958, 1084, 0.30 + 0.55 * cl((p - 0.45) * 2.2), LIME, P["card2"], 12)
-    tx(d, (122, 1120), "不打断任务 · 直接改方向" if got > 0.9 else "收到回复后继续", 30, dim, "r")
-    if got >= 0.99:
-        chip(d, 958, 1244, "父回复 1", 30, INK, ORANGE, align="right")
+    for y in range(638, 1100, 30):
+        d.line((540, y, 540, y + 12), fill=P["line"], width=4)
+    d.polygon(((540, 1120), (522, 1094), (558, 1094)), fill=ORANGE)
+    y = round(640 + 204 * travel)
+    plate(d, (140, y, 940, y + 220), P["card"], 26, ORANGE, 3)
+    tx(d, (180, y + 28), "先确认下游接口，", 46, fg, maxw=720)
+    tx(d, (180, y + 100), "把差异整理给我。", 46, fg, maxw=720)
+    tx(d, (180, y + 174), "回复给：查资料", 26, dim, "r")
+
+    plate(d, (80, 1150, 1000, 1430), P["card"], 28,
+          (82, 116, 0) if received else P["line"], 3)
+    avatar(d, 174, 1236, 48, "A", INK, LIME)
+    tx(d, (260, 1184), "DSH · 查资料", 48, fg)
+    tx(d, (260, 1264), "收到，正在核对接口" if received else "继续执行，接收新方向", 34, fg, "r")
+    chip(d, 122, 1372, "已调整方向" if received else "任务继续", 28, INK, LIME,
+         pad=(20, 10))
+    tx(d, (958, 1372), "另外两个任务照常继续", 28, dim, "r", anchor="rm")
     return im
 
 

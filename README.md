@@ -18,9 +18,9 @@
 
 ## 0.1.3 更新短片
 
-45 秒竖屏短片：并行派工、父子任务中途交流、单独停止，以及自由模型选择。
+45 秒纯字幕与程序配乐竖屏短片：并行派工、父子任务中途交流、单独停止，以及自由模型选择。
 
-[观看 / 下载成片](https://github.com/ericlee041769-hash/dsh-waibao/releases/download/v0.1.3/dsh-waibao-0.1.3-short.mp4) · [制作源码](promo/update-013/README.md) · [发布文案](docs/update-013-video-copy.md)
+[观看 / 下载成片](https://github.com/ericlee041769-hash/dsh-waibao/releases/download/v0.1.3/dsh-waibao-0.1.3-subtitles.mp4) · [制作源码](promo/update-013/README.md) · [发布文案](docs/update-013-video-copy.md)
 
 ## 什么情况下有用
 

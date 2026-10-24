@@ -2,14 +2,14 @@
 """dsh-waibao 0.1.3 — 44.69 s vertical promo film.
 
 Frames are drawn with Pillow and encoded with a local FFmpeg. No third-party
-footage, no stock music: the beat bed is synthesised here, mixed under the
-narration. Everything resolves relative to this file.
+footage, no stock music: the instrumental score is synthesized by music.py.
+There is no narration. Everything resolves relative to this file.
 
     python render.py --preview          # one frame per shot + contact sheet
     python render.py                    # full film into ../outputs/update-013
     python render.py --times 3.0,26.9   # specific frames, for layout checks
 
-Paths are relative by default. Override with --audio-dir, --out, --frames-dir,
+Paths are relative by default. Override with --timeline, --out, --frames-dir,
 --font, --font-bold, --font-mono, --ffmpeg.
 """
 import argparse
@@ -19,21 +19,19 @@ import os
 import shutil
 import subprocess
 import sys
-import wave
 from pathlib import Path
 
-import numpy as np
 from PIL import Image, ImageDraw
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import shots as S
-from shots import W, H, LIME, ORANGE, INK, PAPER, WHITE, GREY, mix
+from music import compose
+from shots import W, H, LIME, INK, PAPER, WHITE
 
 HERE = Path(__file__).resolve().parent
-DEFAULT_AUDIO = HERE / "audio"
+DEFAULT_TIMELINE = HERE / "timeline.json"
 DEFAULT_OUT = HERE.parent.parent / "outputs" / "update-013"
 FPS = 30
-TAIL = 1.5
 
 SHOT_FUNCS = (S.shot_wait, S.shot_squad, S.shot_parallel, S.shot_report,
               S.shot_reply, S.shot_stop, S.shot_models, S.shot_history,
@@ -62,9 +60,9 @@ def camera_for(i, p, lt):
             j = 9 * (1 - lt / 0.16) * math.sin(lt * 90)
         return z, 540 + j, 860 + j * 0.5
     if i == 3:
-        return 1.0 + 0.09 * S.eio(p), 540, 980 - 300 * S.eo(S.seg(p, 0.42, 0.80))
+        return 1.0, 540, 960
     if i == 4:
-        return 1.04, 540, 520 + 330 * S.eo(S.seg(p, 0.05, 0.62))
+        return 1.0, 540, 960
     if i == 5:
         z = 1.0 + 0.03 * S.eio(p)
         j = 0.0
@@ -105,8 +103,6 @@ def flash_at(i, p, lt):
         for cut in (0.333, 0.667):
             if cut <= p <= cut + 0.016:
                 return 0.6, (255, 255, 255)
-    if i == 3 and abs(p - 0.76) < 0.016:
-        return 0.35, LIME
     if i == 10 and abs(p - 0.40) < 0.018:
         return 0.30, LIME
     return None
@@ -184,107 +180,6 @@ def frame(t, cues, bounds, duration, pal):
     return im
 
 
-# --------------------------------------------------------------------- audio
-def build_bed(duration, sr=48000, cues=()):
-    n = int(round(duration * sr))
-    t = np.arange(n) / sr
-    rng = np.random.default_rng(7)
-    bed = np.zeros(n)
-
-    def add(at, sig, gain):
-        s = int(round(at * sr))
-        if s >= n:
-            return
-        e = min(n, s + len(sig))
-        bed[s:e] += sig[: e - s] * gain
-
-    def kick():
-        tt = np.arange(int(0.30 * sr)) / sr
-        f = 118 - 74 * (tt / 0.30)
-        env = np.exp(-tt / 0.085)
-        return np.sin(2 * np.pi * f * tt) * env
-
-    def hat():
-        tt = np.arange(int(0.05 * sr)) / sr
-        noise = rng.normal(0, 1, len(tt))
-        noise = np.diff(noise, prepend=0.0)
-        return noise * np.exp(-tt / 0.013)
-
-    def hit():
-        tt = np.arange(int(0.75 * sr)) / sr
-        low = np.sin(2 * np.pi * 52 * tt) * np.exp(-tt / 0.19)
-        burst = rng.normal(0, 1, len(tt)) * np.exp(-tt / 0.05)
-        return low * 0.9 + burst * 0.35
-
-    ki, hi = kick(), hat()
-    beat = 0.5
-    k = 0
-    while k * beat < duration:
-        add(k * beat, ki, 0.50 if k % 2 == 0 else 0.34)
-        add(k * beat + 0.25, hi, 0.16)
-        k += 1
-
-    for at, g in ((0.20, 0.55), (3.917, 0.85), (14.829, 0.9), (26.656, 1.0), (35.257, 0.8)):
-        add(at, hit(), g)
-    for at in (26.10, 34.72):
-        tt = np.arange(int(0.55 * sr)) / sr
-        riser = rng.normal(0, 1, len(tt)) * (tt / 0.55) ** 2
-        add(at, riser, 0.30)
-
-    drone = (np.sin(2 * np.pi * 55 * t) * 0.6 + np.sin(2 * np.pi * 82.4 * t) * 0.35)
-    drone *= 0.55 + 0.45 * np.sin(2 * np.pi * 0.22 * t)
-    bed += drone * 0.045
-
-    peak = float(np.max(np.abs(bed))) or 1.0
-    return bed / peak * 0.115
-
-
-def read_wav(path):
-    with wave.open(str(path), "rb") as w:
-        sr = w.getframerate()
-        ch = w.getnchannels()
-        width = w.getsampwidth()
-        raw = w.readframes(w.getnframes())
-    if width != 2:
-        raise SystemExit("expected 16-bit PCM: %s" % path)
-    a = np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
-    if ch > 1:
-        a = a.reshape(-1, ch)
-    else:
-        a = a.reshape(-1, 1)
-    return a, sr
-
-
-def write_wav(path, data, sr):
-    clipped = np.clip(data, -1.0, 1.0)
-    pcm = (clipped * 32767.0).astype("<i2")
-    with wave.open(str(path), "wb") as w:
-        w.setnchannels(data.shape[1])
-        w.setsampwidth(2)
-        w.setframerate(sr)
-        w.writeframes(pcm.tobytes())
-
-
-def mix_audio(voice_path, out_path, duration, cues):
-    voice, sr = read_wav(voice_path)
-    n = int(round(duration * sr))
-    if len(voice) < n:
-        voice = np.vstack([voice, np.zeros((n - len(voice), voice.shape[1]), dtype=np.float32)])
-    voice = voice[:n]
-    bed = build_bed(duration, sr, cues)
-    mixed = voice.copy()
-    voice_peak = float(np.max(np.abs(voice))) or 1.0
-    room = max(0.0, 0.955 - voice_peak)
-    gain = min(1.0, room / 0.115) if room > 0 else 0.0
-    mixed += (bed * gain)[:, None]
-    peak = float(np.max(np.abs(mixed)))
-    if peak > 0.985:
-        mixed *= 0.985 / peak
-    write_wav(out_path, mixed, sr)
-    return dict(voice_peak=round(voice_peak, 4), bed_gain=round(gain, 4),
-                mixed_peak=round(float(np.max(np.abs(mixed))), 4), sample_rate=sr)
-
-
 # --------------------------------------------------------------------- output
 def contact_sheet(frames, path, cols=4, tile=(270, 480)):
     rows = (len(frames) + cols - 1) // cols
@@ -313,7 +208,7 @@ def encode(frames_dir, audio_path, out_path, ffmpeg, duration):
 
 def main():
     ap = argparse.ArgumentParser(description="dsh-waibao 0.1.3 vertical film")
-    ap.add_argument("--audio-dir", type=Path, default=DEFAULT_AUDIO)
+    ap.add_argument("--timeline", type=Path, default=DEFAULT_TIMELINE)
     ap.add_argument("--out", type=Path, default=DEFAULT_OUT)
     ap.add_argument("--frames-dir", type=Path, default=HERE / "out" / "frames")
     ap.add_argument("--font", default=str(Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts" / "msyh.ttc"))
@@ -327,9 +222,9 @@ def main():
     ap.add_argument("--encode-only", action="store_true", help="encode existing frames")
     args = ap.parse_args()
 
-    nar = json.loads((args.audio_dir / "narration.json").read_text(encoding="utf-8-sig"))
-    cues = nar["subtitles"]
-    duration = float(nar["duration_seconds"]) + TAIL
+    timeline = json.loads(args.timeline.read_text(encoding="utf-8-sig"))
+    cues = timeline["subtitles"]
+    duration = float(timeline["duration_seconds"])
     bounds = shot_bounds(cues, duration)
 
     win = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
@@ -342,7 +237,7 @@ def main():
     args.out.mkdir(parents=True, exist_ok=True)
     args.frames_dir.mkdir(parents=True, exist_ok=True)
 
-    # A dedicated cover carries the hook without a frozen narration subtitle.
+    # A dedicated cover carries the hook without a frozen subtitle.
     cover = Image.new("RGB", (W, H), INK)
     cd = ImageDraw.Draw(cover)
     S.chip(cd, 80, 130, "DSH 外包 / 0.1.3", 34, INK, LIME)
@@ -396,9 +291,6 @@ def main():
         if args.frames_only:
             return
 
-    mixed = args.out / "mix.wav"
-    info = mix_audio(args.audio_dir / "voiceover.wav", mixed, duration, cues)
-
     ffmpeg = args.ffmpeg
     if not ffmpeg:
         try:
@@ -409,10 +301,13 @@ def main():
     if not ffmpeg:
         raise SystemExit("no ffmpeg: pass --ffmpeg or set one on PATH")
 
-    video = args.out / "dsh-waibao-0.1.3-short.mp4"
+    mixed = args.out / "music.wav"
+    info = compose(duration, cues, mixed, ffmpeg)
+
+    video = args.out / "dsh-waibao-0.1.3-subtitles.mp4"
     encode(args.frames_dir, mixed, video, ffmpeg, duration)
 
-    src_srt = args.audio_dir / "captions.srt"
+    src_srt = HERE / "captions.srt"
     if src_srt.exists():
         shutil.copyfile(src_srt, args.out / "captions.srt")
     contact_sheet([(frame((a + b) / 2 + (b - a) * 0.18, cues, bounds, duration, pal), t)
@@ -424,7 +319,7 @@ def main():
 
     manifest = dict(width=W, height=H, fps=FPS, seconds=round(duration, 3),
                     frames=total, video=video.name, audio="AAC 192k 48k stereo",
-                    voice=nar.get("voice"), mixed_audio=info,
+                    voice=False, music=info,
                     disclosure=list(dict.fromkeys(SHOT_TAG)),
                     shots=[{"index": k + 1, "tag": SHOT_TAG[k],
                             "start": round(a, 3), "end": round(b, 3)}
