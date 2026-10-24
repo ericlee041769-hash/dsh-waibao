@@ -4,3 +4,10 @@ node_modules/
 promo/rendered/
 work/
 *.log
+outputs/update-013/
+promo/update-013/audio/**/*.wav
+promo/update-013/audio/**/*.mp3
+promo/update-013/audio/**/*.m4a
+promo/update-013/**/__pycache__/
+promo/update-013/frames/
+promo/update-013/audio/build/

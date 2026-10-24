@@ -1,0 +1,5 @@
+# local build output of this film (not shipped)
+out/
+frames/
+__pycache__/
+*.log

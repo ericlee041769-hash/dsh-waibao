@@ -16,6 +16,12 @@
 - **历史接入**：把已有 headless 会话加入桌面工作区，再继续工作。
 - **自由模型**：使用 DSH 实际选择，支持任意已配置 provider/model；同会话续接可以切换模型。
 
+## 0.1.3 更新短片
+
+45 秒竖屏短片：并行派工、父子任务中途交流、单独停止，以及自由模型选择。
+
+[观看 / 下载成片](https://github.com/ericlee041769-hash/dsh-waibao/releases/download/v0.1.3/dsh-waibao-0.1.3-short.mp4) · [制作源码](promo/update-013/README.md) · [发布文案](docs/update-013-video-copy.md)
+
 ## 什么情况下有用
 
 Codex 负责拆解、评审和验收，DSH 接手实现、调查或测试时，你能看见执行过程、减少重复交代背景，并在完成后继续推进。多轮功能开发、长时间测试和检查更适合这条流程；单轮简单问答或一步操作由 Codex 自己做更省。
